@@ -22,7 +22,6 @@
                 API BingX: OK
             </div>
             <div id="last-update" class="status-item">Último análisis: --:--</div>
-            <button id="refresh-universe" class="btn btn-secondary">Cargar Activos</button>
         </div>
     </header>
 
@@ -109,6 +108,8 @@
                                 <th>RSI</th>
                                 <th>ATR%</th>
                                 <th>ADX</th>
+                                <th>CHOP</th>
+                                <th>ER</th>
                                 <th>Estado</th>
                                 <th>Acción</th>
                             </tr>
@@ -173,18 +174,36 @@
                     </div>
                     <div class="panel simulation-panel">
                         <div class="panel-header">
-                            <h3>Simulación Histórica</h3>
-                            <div class="period-selector">
-                                <button class="btn-tab active" data-period="7">7d</button>
-                                <button class="btn-tab" data-period="15">15d</button>
-                                <button class="btn-tab" data-period="30">30d</button>
+                            <h3>Simulaciones de Rendimiento Histórico</h3>
+                        </div>
+                        <div class="charts-row">
+                            <div class="chart-item">
+                                <div class="chart-header">
+                                    <h4>Periodo 7 Días</h4>
+                                    <div id="sim-stats-7" class="sim-stats-mini"></div>
+                                </div>
+                                <div class="chart-container-mini">
+                                    <canvas id="price-chart-7"></canvas>
+                                </div>
                             </div>
-                        </div>
-                        <div id="sim-stats" class="sim-stats">
-                            <!-- Simulation results -->
-                        </div>
-                        <div class="chart-container">
-                            <canvas id="price-chart"></canvas>
+                            <div class="chart-item">
+                                <div class="chart-header">
+                                    <h4>Periodo 15 Días</h4>
+                                    <div id="sim-stats-15" class="sim-stats-mini"></div>
+                                </div>
+                                <div class="chart-container-mini">
+                                    <canvas id="price-chart-15"></canvas>
+                                </div>
+                            </div>
+                            <div class="chart-item">
+                                <div class="chart-header">
+                                    <h4>Periodo 30 Días</h4>
+                                    <div id="sim-stats-30" class="sim-stats-mini"></div>
+                                </div>
+                                <div class="chart-container-mini">
+                                    <canvas id="price-chart-30"></canvas>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

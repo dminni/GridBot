@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const universeBtn = document.getElementById('refresh-universe');
+    // const universeBtn = document.getElementById('refresh-universe');
     const analysisForm = document.getElementById('analysis-form');
     const rankingBody = document.getElementById('ranking-body');
     const discardedList = document.getElementById('discarded-list');
@@ -17,21 +17,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load universe on start
     loadUniverse();
 
-    universeBtn.addEventListener('click', loadUniverse);
+    // universeBtn.addEventListener('click', loadUniverse);
 
     async function loadUniverse() {
-        universeBtn.disabled = true;
-        universeBtn.textContent = 'Cargando...';
         try {
             const resp = await fetch('/api/assets/universe');
             allAssets = await resp.json();
-            updateRankingTable([]); // Clear
             showNotification('Universo de activos cargado: ' + allAssets.length, 'success');
         } catch (err) {
             showNotification('Error al cargar activos', 'error');
-        } finally {
-            universeBtn.disabled = false;
-            universeBtn.textContent = 'Cargar Activos';
         }
     }
 
@@ -46,7 +40,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         progressContainer.classList.remove('hidden');
-        progressFill.style.width = '20%';
+        progressFill.style.width = '10%';
+        progressText.textContent = 'Verificando activos...';
+
+        if (allAssets.length === 0) {
+            await loadUniverse();
+        }
+
+        progressFill.style.width = '30%';
         progressText.textContent = 'Calculando indicadores...';
 
         try {
@@ -90,6 +91,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${a.analysis.indicators.RSI?.toFixed(1) || '--'}</td>
                 <td>${a.analysis.indicators.ATR?.toFixed(1) || '--'}%</td>
                 <td>${a.analysis.indicators.ADX?.toFixed(1) || '--'}</td>
+                <td>${a.analysis.indicators.CHOP?.toFixed(1) || '--'}</td>
+                <td>${a.analysis.indicators.ER?.toFixed(2) || '--'}</td>
                 <td>${a.analysis.status}</td>
                 <td><button class="btn btn-secondary btn-sm view-detail" data-symbol="${a.symbol}">Ver Detalle</button></td>
             `;
@@ -145,79 +148,168 @@ document.addEventListener('DOMContentLoaded', () => {
             altBody.innerHTML += `<tr><td>${c.type}</td><td>${c.grids}</td><td>${c.profit_per_grid.toFixed(2)}%</td></tr>`;
         });
 
-        // Simulation Stats
-        const simStats = document.getElementById('sim-stats');
-        simStats.innerHTML = `
-            <div class="stat-box">
-                <span class="stat-label">ROI Neto (${sim.period}d)</span>
-                <span class="stat-value" style="color: ${sim.roi_net >= 0 ? 'var(--primary)' : 'var(--danger)'}">${sim.roi_net.toFixed(2)}%</span>
-            </div>
-            <div class="stat-box">
-                <span class="stat-label">Capital Final ($1000)</span>
-                <span class="stat-value">$${sim.final_capital.toFixed(2)}</span>
-            </div>
-            <div class="stat-box">
-                <span class="stat-label">Operaciones</span>
-                <span class="stat-value">${sim.estimated_operations}</span>
-            </div>
-            <div class="stat-box">
-                <span class="stat-label">vs Buy & Hold</span>
-                <span class="stat-value">${sim.buy_and_hold_roi.toFixed(2)}%</span>
-            </div>
-        `;
-
-        renderChart(sim.history, gc.lower_range, gc.upper_range);
+        // Simulations
+        const simulations = data.simulations;
+        const periods = [7, 15, 30];
+        
+        simulations.forEach((sim, idx) => {
+            const period = periods[idx];
+            const statsContainer = document.getElementById(`sim-stats-${period}`);
+            if (sim) {
+                statsContainer.innerHTML = `
+                    <span class="roi-badge" style="background: ${sim.roi_net >= 0 ? 'rgba(0,212,170,0.2)' : 'rgba(231,76,60,0.2)'}; color: ${sim.roi_net >= 0 ? 'var(--primary)' : 'var(--danger)'}">
+                        ${sim.roi_net >= 0 ? '+' : ''}${sim.roi_net.toFixed(2)}%
+                    </span>
+                    <span class="ops-count">${sim.estimated_operations} ops</span>
+                    <span class="ops-count">B&H: ${sim.buy_and_hold_roi.toFixed(2)}%</span>
+                `;
+                renderChart(`price-chart-${period}`, sim.history, gc, sim.trades || []);
+            } else {
+                statsContainer.innerHTML = '<span style="color:var(--text-sec)">Sin datos</span>';
+            }
+        });
 
         modal.classList.remove('hidden');
     }
 
-    function renderChart(history, lower, upper) {
-        const ctx = document.getElementById('price-chart').getContext('2d');
-        if (priceChart) priceChart.destroy();
+    function renderChart(canvasId, history, gridConfig, trades) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        
+        if (window.charts && window.charts[canvasId]) {
+            window.charts[canvasId].destroy();
+        }
+        if (!window.charts) window.charts = {};
 
-        const labels = history.map(h => new Date(h.timestamp).toLocaleDateString());
+        const labels = history.map(h => {
+            const d = new Date(h.timestamp);
+            return d.getDate() + '/' + (d.getMonth() + 1);
+        });
         const prices = history.map(h => h.close);
 
-        priceChart = new Chart(ctx, {
+        const lower = gridConfig.lower_range;
+        const upper = gridConfig.upper_range;
+        const grids = gridConfig.recommended_grids;
+        const step = (upper - lower) / grids;
+
+        // Build a timestamp-to-index map for placing trade markers
+        const tsToIdx = {};
+        history.forEach((h, i) => { tsToIdx[h.timestamp] = i; });
+
+        const datasets = [
+            {
+                label: 'Precio',
+                data: prices,
+                borderColor: '#6B7FFF',
+                borderWidth: 2,
+                pointRadius: 0,
+                fill: false,
+                order: 1
+            }
+        ];
+
+        // Upper/Lower range bands with shaded fill between them
+        datasets.push({
+            label: 'Upper',
+            data: Array(labels.length).fill(upper),
+            borderColor: '#00D4AA',
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false,
+            order: 2
+        });
+        datasets.push({
+            label: 'Lower',
+            data: Array(labels.length).fill(lower),
+            borderColor: '#E74C3C',
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: '-1', // fill between Lower and Upper
+            backgroundColor: 'rgba(107, 127, 255, 0.05)',
+            order: 2
+        });
+
+        // Grid lines (subtle)
+        const maxGridLines = Math.min(grids - 1, 30); // cap to avoid too many lines
+        const gridStep = Math.max(1, Math.floor((grids - 1) / maxGridLines));
+        for (let i = gridStep; i < grids; i += gridStep) {
+            datasets.push({
+                data: Array(labels.length).fill(lower + i * step),
+                borderColor: 'rgba(136, 146, 164, 0.15)',
+                borderWidth: 1,
+                borderDash: [2, 3],
+                pointRadius: 0,
+                fill: false,
+                order: 3
+            });
+        }
+
+        // Buy markers (green triangles)
+        const buyData = Array(labels.length).fill(null);
+        const sellData = Array(labels.length).fill(null);
+        
+        trades.forEach(t => {
+            const idx = tsToIdx[t.timestamp];
+            if (idx !== undefined) {
+                if (t.type === 'buy') {
+                    buyData[idx] = t.price;
+                } else {
+                    sellData[idx] = t.price;
+                }
+            }
+        });
+
+        datasets.push({
+            label: 'Compra',
+            data: buyData,
+            borderColor: '#00D4AA',
+            backgroundColor: '#00D4AA',
+            pointStyle: 'triangle',
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            showLine: false,
+            order: 0
+        });
+
+        datasets.push({
+            label: 'Venta',
+            data: sellData,
+            borderColor: '#F5A623',
+            backgroundColor: '#F5A623',
+            pointStyle: 'rectRot',
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            showLine: false,
+            order: 0
+        });
+
+        window.charts[canvasId] = new Chart(ctx, {
             type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'Precio',
-                        data: prices,
-                        borderColor: '#6B7FFF',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        fill: false
-                    },
-                    {
-                        label: 'Grid Upper',
-                        data: Array(labels.length).fill(upper),
-                        borderColor: 'rgba(0, 212, 170, 0.5)',
-                        borderDash: [5, 5],
-                        pointRadius: 0,
-                        fill: false
-                    },
-                    {
-                        label: 'Grid Lower',
-                        data: Array(labels.length).fill(lower),
-                        borderColor: 'rgba(231, 76, 60, 0.5)',
-                        borderDash: [5, 5],
-                        pointRadius: 0,
-                        fill: false
-                    }
-                ]
-            },
+            data: { labels, datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    y: { grid: { color: '#252D3D' }, ticks: { color: '#8892A4' } },
-                    x: { grid: { display: false }, ticks: { color: '#8892A4' } }
+                    y: { 
+                        grid: { color: 'rgba(37, 45, 61, 0.5)' }, 
+                        ticks: { color: '#8892A4', font: { size: 10 } } 
+                    },
+                    x: { 
+                        grid: { display: false }, 
+                        ticks: { color: '#8892A4', font: { size: 10 }, maxRotation: 0 } 
+                    }
                 },
                 plugins: {
-                    legend: { display: false }
+                    legend: { 
+                        display: true,
+                        position: 'top',
+                        labels: { 
+                            color: '#8892A4', 
+                            font: { size: 10 },
+                            usePointStyle: true,
+                            filter: (item) => ['Precio','Upper','Lower','Compra','Venta'].includes(item.text)
+                        }
+                    },
+                    tooltip: { enabled: true }
                 }
             }
         });

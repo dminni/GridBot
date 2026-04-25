@@ -208,16 +208,32 @@ func (az *Analyzer) AnalyzeAsset(asset models.Asset, selectedIndicators []string
 }
 
 func (az *Analyzer) calculateGridConfig(analysis *models.Analysis, currentPrice float64, ohlcv []models.OHLCV, sr *indicators.SRResult) {
-	lower := sr.CurrentS * 0.98
-	upper := sr.CurrentR * 1.02
+	relATR := analysis.Indicators["ATR"]
+	if relATR == 0 {
+		relATR = 5.0 // fallback
+	}
+
+	// Calculate a tighter range based on volatility (ATR)
+	// Base range: CurrentPrice +/- 1.5 * ATR
+	atrBuffer := (relATR / 100.0) * currentPrice * 1.5
 	
-	// Fallback to BB if S/R is too narrow or missing
-	if (upper-lower)/lower < 0.05 {
-		bb := indicators.CalculateBollingerBands(ohlcv, 20, 2)
-		if bb != nil {
-			lower = bb.Lower
-			upper = bb.Upper
-		}
+	lower := currentPrice - atrBuffer
+	upper := currentPrice + atrBuffer
+	
+	// Incorporate S/R only if they are within a reasonable distance (max 2 * ATR)
+	maxSRDist := atrBuffer * 1.33 // approx 2 * ATR total
+	
+	if sr.CurrentS > 0 && (currentPrice - sr.CurrentS) < maxSRDist {
+		lower = math.Max(lower, sr.CurrentS * 0.995)
+	}
+	if sr.CurrentR > 0 && (sr.CurrentR - currentPrice) < maxSRDist {
+		upper = math.Min(upper, sr.CurrentR * 1.005)
+	}
+
+	// SAFETY: Ensure price is centered if range is too skewed
+	if currentPrice <= lower || currentPrice >= upper {
+		lower = currentPrice * 0.98
+		upper = currentPrice * 1.02
 	}
 
 	amplitude := (upper - lower) / lower * 100

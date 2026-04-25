@@ -261,6 +261,15 @@ tr:hover td {
     cursor: pointer;
 }
 
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+#ranking-body tr {
+    animation: fadeIn 0.4s ease forwards;
+}
+
 .score-badge {
     padding: 0.2rem 0.6rem;
     border-radius: 4px;
@@ -411,9 +420,48 @@ tr:hover td {
 .hidden { display: none !important; }
 
 /* Charts */
-.chart-container {
-    height: 300px;
-    margin-top: 1rem;
+.charts-row {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding-bottom: 1rem;
+}
+
+.chart-item {
+    width: 100%;
+    background-color: var(--bg-main);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.chart-header h4 {
+    font-size: 1rem;
+    color: var(--text-sec);
+    font-weight: 600;
+}
+
+.sim-stats-mini {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.9rem;
+}
+
+.roi-badge {
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    font-weight: 700;
+}
+
+.chart-container-mini {
+    height: 300px; /* Increased height for better visibility */
 }
 
 /* Progress */

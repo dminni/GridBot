@@ -1,7 +1,7 @@
 package services
 
 import (
-	"math"
+	"sort"
 	"github.com/dminni/gridbot/models"
 )
 
@@ -14,36 +14,80 @@ func NewSimulator(bx *BingXClient) *Simulator {
 }
 
 func (s *Simulator) Simulate(symbol string, periodDays int, config models.GridConfig) (*models.SimulationResult, error) {
-	ohlcv, err := s.BingX.GetOHLCV(symbol, "1h", periodDays*24)
+	// Fetch daily candles with extra buffer
+	ohlcv, err := s.BingX.GetOHLCV(symbol, "1d", periodDays+10)
 	if err != nil || len(ohlcv) == 0 {
 		return nil, err
 	}
 
+	// Sort ascending by timestamp (oldest first)
+	sort.Slice(ohlcv, func(i, j int) bool {
+		return ohlcv[i].Timestamp < ohlcv[j].Timestamp
+	})
+
+	// Trim to exactly periodDays from the end (most recent)
+	if len(ohlcv) > periodDays {
+		ohlcv = ohlcv[len(ohlcv)-periodDays:]
+	}
+
 	entryPrice := ohlcv[0].Close
 	currentPrice := ohlcv[len(ohlcv)-1].Close
-	
-	// Simplified simulation logic
-	// Count how many times price crosses the average grid level
-	gridSize := (config.UpperRange - config.LowerRange) / float64(config.RecommendedGrids)
-	
-	crosses := 0
+
+	// Grid levels
+	lower := config.LowerRange
+	upper := config.UpperRange
+	grids := config.RecommendedGrids
+	if grids < 2 {
+		grids = 5
+	}
+	gridSize := (upper - lower) / float64(grids)
+	if gridSize <= 0 {
+		gridSize = currentPrice * 0.005
+	}
+
+	// Simulate trades: detect when price crosses grid levels
+	var trades []models.Trade
 	for i := 1; i < len(ohlcv); i++ {
-		// Price crossed a grid line (simplified)
-		diff := math.Abs(ohlcv[i].Close - ohlcv[i-1].Close)
-		if diff > gridSize {
-			crosses += int(diff / gridSize)
+		prevClose := ohlcv[i-1].Close
+		currLow := ohlcv[i].Low
+		currHigh := ohlcv[i].High
+
+		// Check each grid level for crossings within this candle
+		for g := 0; g <= grids; g++ {
+			level := lower + float64(g)*gridSize
+
+			// Price dropped through a level (BUY signal)
+			if prevClose > level && currLow <= level {
+				trades = append(trades, models.Trade{
+					Timestamp: ohlcv[i].Timestamp,
+					Price:     level,
+					Type:      "buy",
+					GridLevel: g,
+				})
+			}
+
+			// Price rose through a level (SELL signal)
+			if prevClose < level && currHigh >= level {
+				trades = append(trades, models.Trade{
+					Timestamp: ohlcv[i].Timestamp,
+					Price:     level,
+					Type:      "sell",
+					GridLevel: g,
+				})
+			}
 		}
 	}
 
 	initialCapital := 1000.0
-	// Profit per cross = (Capital/Grids) * (ProfitPerGridNet/100)
-	// Simplified: total ops * profit per grid
-	numOps := crosses
-	profitNet := float64(numOps) * (initialCapital / float64(config.RecommendedGrids)) * (config.ProfitPerGridNet / 100)
-	
+	numOps := len(trades)
+	profitPerOp := (initialCapital / float64(grids)) * (config.ProfitPerGridNet / 100)
+	// Only completed round-trips generate profit (buy+sell pairs)
+	completedPairs := numOps / 2
+	profitNet := float64(completedPairs) * profitPerOp
+
 	finalCapital := initialCapital + profitNet
 	roiNet := (profitNet / initialCapital) * 100
-	totalFees := float64(numOps) * (initialCapital / float64(config.RecommendedGrids)) * 0.002 // 0.2% fee
+	totalFees := float64(numOps) * (initialCapital / float64(grids)) * 0.002
 
 	buyAndHoldROI := (currentPrice - entryPrice) / entryPrice * 100
 
@@ -53,9 +97,10 @@ func (s *Simulator) Simulate(symbol string, periodDays int, config models.GridCo
 		CurrentPrice:        currentPrice,
 		FinalCapital:        finalCapital,
 		ROINet:              roiNet,
-		EstimatedOperations: numOps,
+		EstimatedOperations: completedPairs,
 		TotalFees:           totalFees,
 		BuyAndHoldROI:       buyAndHoldROI,
 		History:             ohlcv,
+		Trades:              trades,
 	}, nil
 }

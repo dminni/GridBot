@@ -28,7 +28,7 @@ func (h *Handlers) GetUniverse(c *gin.Context) {
 		return
 	}
 
-	assets, err := h.CoinGecko.GetTop100Assets()
+	assets, err := h.CoinGecko.GetTopAssets()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -113,27 +113,27 @@ func (h *Handlers) RunAnalysis(c *gin.Context) {
 
 func (h *Handlers) GetAssetDetail(c *gin.Context) {
 	symbol := c.Param("symbol")
-	periodStr := c.DefaultQuery("period", "30")
-	period, _ := strconv.Atoi(periodStr)
 
-	// In a real app we'd fetch fresh data. For this, we'll use cached analysis if available.
 	var lastAnalysis models.AnalysisResult
 	if cached, ok := h.Cache.Get("last_analysis"); ok {
 		lastAnalysis = cached.(models.AnalysisResult)
 		for _, a := range lastAnalysis.RankedAssets {
 			if a.Symbol == symbol {
-				// Simulating history too
-				sim, _ := h.Simulator.Simulate(symbol, period, a.Analysis.GridConfig)
+				periods := []int{7, 15, 30}
+				simulations := make([]*models.SimulationResult, len(periods))
+				for i, p := range periods {
+					sim, _ := h.Simulator.Simulate(symbol, p, a.Analysis.GridConfig)
+					simulations[i] = sim
+				}
 				c.JSON(http.StatusOK, gin.H{
-					"asset":      a,
-					"simulation": sim,
+					"asset":       a,
+					"simulations": simulations,
 				})
 				return
 			}
 		}
 	}
-
-	c.JSON(http.StatusNotFound, gin.H{"error": "Asset not found in last analysis"})
+	c.JSON(http.StatusNotFound, gin.H{"error": "Asset not found"})
 }
 func (h *Handlers) GetOHLCV(c *gin.Context) {
 	symbol := c.Param("symbol")
