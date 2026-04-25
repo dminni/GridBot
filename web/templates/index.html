@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GridBot | BingX Spot Analyzer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="dark-mode">
+    <header class="main-header">
+        <div class="logo-container">
+            <h1 class="logo">Grid<span>Bot</span></h1>
+            <span class="subtitle">BingX Grid Spot Analyzer</span>
+        </div>
+        <div class="status-bar">
+            <div id="api-status" class="status-item">
+                <span class="status-dot green"></span>
+                API BingX: OK
+            </div>
+            <div id="last-update" class="status-item">Último análisis: --:--</div>
+            <button id="refresh-universe" class="btn btn-secondary">Cargar Activos</button>
+        </div>
+    </header>
+
+    <main class="dashboard">
+        <aside class="sidebar">
+            <section class="panel config-panel">
+                <h2 class="panel-title">Configuración de Análisis</h2>
+                <p class="panel-desc">Seleccioná los indicadores para el cálculo de score:</p>
+                
+                <form id="analysis-form" class="indicators-grid">
+                    <label class="checkbox-container">
+                        <input type="checkbox" name="indicators" value="ATR" checked>
+                        <span class="checkmark"></span>
+                        ATR - Volatilidad
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" name="indicators" value="ADX" checked>
+                        <span class="checkmark"></span>
+                        ADX - Rango/Tendencia
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" name="indicators" value="RSI" checked>
+                        <span class="checkmark"></span>
+                        RSI - Momentum
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" name="indicators" value="BB" checked>
+                        <span class="checkmark"></span>
+                        Bollinger Bands
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" name="indicators" value="SR" checked>
+                        <span class="checkmark"></span>
+                        Soportes/Resistencias
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" name="indicators" value="HV" checked>
+                        <span class="checkmark"></span>
+                        Volatilidad Histórica
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" name="indicators" value="RVOL" checked>
+                        <span class="checkmark"></span>
+                        Volumen Relativo
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" name="indicators" value="CHOP" checked>
+                        <span class="checkmark"></span>
+                        Choppiness Index
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" name="indicators" value="ER" checked>
+                        <span class="checkmark"></span>
+                        Efficiency Ratio
+                    </label>
+
+                    <button type="submit" id="analyze-btn" class="btn btn-primary">EJECUTAR ANÁLISIS</button>
+                </form>
+                <div id="progress-container" class="hidden">
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
+                    <span id="progress-text">Analizando...</span>
+                </div>
+            </section>
+        </aside>
+
+        <section class="content-area">
+            <div class="panel ranking-panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">Ranking de Activos Sugeridos</h2>
+                    <div class="filters">
+                        <input type="text" id="search-input" placeholder="Buscar por símbolo...">
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="ranking-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Activo</th>
+                                <th>Precio</th>
+                                <th>Score</th>
+                                <th>RSI</th>
+                                <th>ATR%</th>
+                                <th>ADX</th>
+                                <th>Estado</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ranking-body">
+                            <!-- Data will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <details class="discarded-section">
+                    <summary>Activos descartados (Score < 50)</summary>
+                    <div id="discarded-list" class="discarded-grid">
+                        <!-- Discarded assets here -->
+                    </div>
+                </details>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal for Detail -->
+    <div id="detail-modal" class="modal hidden">
+        <div class="modal-content">
+            <header class="modal-header">
+                <div class="asset-info">
+                    <h2 id="modal-title">BTC/USDT</h2>
+                    <span id="modal-price" class="price-big">$0.00</span>
+                </div>
+                <button class="close-modal">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div class="detail-grid">
+                    <div class="panel indicators-detail">
+                        <h3>Indicadores Técnicos</h3>
+                        <div id="indicators-stats" class="stats-grid"></div>
+                        <div class="justification-box">
+                            <h4>Análisis de Estrategia</h4>
+                            <p id="justification-text"></p>
+                        </div>
+                    </div>
+                    <div class="panel grid-suggestion">
+                        <h3>Configuración Sugerida</h3>
+                        <div class="grid-config-box">
+                            <div class="range-info">
+                                <div><span class="label">Rango Inferior</span> <span id="grid-lower" class="val">0</span></div>
+                                <div><span class="label">Rango Superior</span> <span id="grid-upper" class="val">0</span></div>
+                                <div><span class="label">Amplitud Total</span> <span id="grid-amp" class="val">0%</span></div>
+                            </div>
+                            <div class="recommended-info">
+                                <span class="label">Grillas Recomendadas</span>
+                                <span id="grid-count" class="val-big">0</span>
+                                <span class="label">Rentabilidad Neta/Grid</span>
+                                <span id="grid-profit" class="val-big">0%</span>
+                            </div>
+                        </div>
+                        <table class="alt-configs">
+                            <thead>
+                                <tr><th>Tipo</th><th>Grillas</th><th>Profit/Grid</th></tr>
+                            </thead>
+                            <tbody id="alt-configs-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="panel simulation-panel">
+                        <div class="panel-header">
+                            <h3>Simulación Histórica</h3>
+                            <div class="period-selector">
+                                <button class="btn-tab active" data-period="7">7d</button>
+                                <button class="btn-tab" data-period="15">15d</button>
+                                <button class="btn-tab" data-period="30">30d</button>
+                            </div>
+                        </div>
+                        <div id="sim-stats" class="sim-stats">
+                            <!-- Simulation results -->
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="price-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

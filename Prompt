@@ -1,0 +1,489 @@
+# ESPECIFICACIÓN DE REQUERIMIENTOS — GRIDBOT
+## Sistema de Análisis Financiero para Bots Grid Spot en BingX
+
+---
+
+### CONTEXTO GENERAL
+
+Desarrollá una aplicación web completa llamada **GridBot**, orientada al análisis técnico y de mercado de criptomonedas que cotizan en el exchange **BingX** (modalidad Spot). El objetivo principal es ayudar al usuario a identificar qué activos son los más adecuados para operar mediante estrategias de **Grid Bot Spot**, basándose en indicadores técnicos, estructura de mercado y análisis de volatilidad.
+
+La aplicación debe ser funcional, modular, con una interfaz web premium moderna y estar desarrollada en el lenguaje de programación **Go (Golang)**, utilizando un stack que incluya un servidor HTTP en Go para el backend y HTML/CSS/JavaScript para el frontend servido por el mismo proceso Go.
+
+La aplicación se ejecutará de forma local o en un servidor privado. No se requiere autenticación de usuarios.
+
+---
+
+### STACK TECNOLÓGICO
+
+**Backend:**
+- Lenguaje: Go (Golang) versión 1.21 o superior
+- Framework HTTP: net/http nativo o Gin/Fiber (elegí el más conveniente para la complejidad del proyecto)
+- Concurrencia: goroutines y channels para análisis paralelo de activos
+- Gestión de configuración: archivo config.yaml o variables de entorno (.env)
+- Cache en memoria: sync.Map o similar para evitar llamadas repetidas a APIs externas
+
+**Frontend (servido por Go):**
+- HTML5 + CSS3 + JavaScript vanilla o con Alpine.js
+- Diseño: interfaz premium moderna con estética oscura (dark mode), inspirada en plataformas financieras profesionales como TradingView o Coinglass
+- Gráficos: Chart.js o Lightweight Charts (TradingView) para visualizaciones de precios e indicadores
+- Responsive: adaptado a desktop (pantalla principal de uso)
+
+**APIs externas a integrar:**
+- CoinGecko API (free tier): para obtener el ranking de las 100 criptomonedas con mayor market cap (excluyendo stablecoins)
+  - Endpoint: GET /coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1
+  - Alternativa: CoinMarketCap API (con API key)
+- BingX API (pública, sin autenticación para datos de mercado):
+  - Precios en tiempo real: GET /openApi/spot/v1/ticker/24hr
+  - Velas históricas (OHLCV): GET /openApi/spot/v1/market/kline?symbol=BTC-USDT&interval=1d&limit=200
+  - Lista de pares disponibles: GET /openApi/spot/v1/common/symbols
+
+**Dependencias Go sugeridas:**
+- github.com/gin-gonic/gin (HTTP router)
+- github.com/joho/godotenv (variables de entorno)
+- encoding/json, net/http (estándar)
+- math (cálculos de indicadores, implementados desde cero sin librerías externas de TA)
+
+---
+
+### MÓDULO 1: OBTENCIÓN Y FILTRADO DE ACTIVOS
+
+**1.1 — Obtención del universo de activos**
+
+Al iniciar el análisis, el sistema debe:
+
+1. Consultar CoinGecko (o CoinMarketCap) para obtener las **100 criptomonedas con mayor market cap** en el momento del análisis.
+2. Filtrar y excluir automáticamente todos los activos clasificados como **stablecoins**. El criterio de exclusión debe aplicarse usando dos métodos combinados:
+   a. El campo `is_stablecoin` o categoría equivalente devuelta por la API.
+   b. Lista manual de exclusión: USDT, USDC, BUSD, DAI, TUSD, FRAX, USDD, USDP, GUSD, LUSD, SUSD, PYUSD, FDUSD, EURS, XAUT, PAXG y similares.
+3. Para cada moneda obtenida, buscar si existe el par correspondiente en **BingX Spot** (ej: si CoinGecko devuelve "bitcoin" con symbol "BTC", buscar "BTC-USDT" en BingX). 
+4. Incluir en el análisis solo aquellos activos que **tengan par activo en BingX Spot**.
+5. Reportar al usuario cuántos activos de los 100 están disponibles en BingX para análisis.
+
+**1.2 — Caché y performance**
+
+- El listado de las 100 monedas debe cachearse por 30 minutos para evitar rate limiting.
+- Los datos OHLCV de BingX deben cachearse por 5 minutos.
+- El proceso de análisis de todos los activos debe ejecutarse en paralelo usando goroutines (máximo 10 concurrentes para no superar rate limits).
+
+---
+
+### MÓDULO 2: MOTOR DE INDICADORES TÉCNICOS
+
+Todos los indicadores deben calcularse internamente en Go, sin dependencias externas de librerías de análisis técnico. Usar datos OHLCV diarios de BingX (mínimo 200 velas).
+
+---
+
+**2.1 — Indicador: ATR (Average True Range)**
+- Período: 14 días
+- Cálculo estándar: True Range = max(High-Low, |High-PrevClose|, |Low-PrevClose|)
+- ATR = EMA(14) del True Range
+- Uso en scoring: ATR relativo (ATR/Precio actual * 100) para medir volatilidad porcentual
+- Rango ideal para grid bot: ATR relativo entre 3% y 15%
+- Por debajo de 3%: mercado demasiado quieto (sin oportunidades de grilla)
+- Por encima de 15%: mercado demasiado volátil (riesgo de breakout)
+
+**2.2 — Indicador: ADX (Average Directional Index)**
+- Período: 14 días
+- Cálculo completo: incluir +DI y -DI además del ADX
+- Interpretación para grid bot:
+  - ADX < 20: mercado en rango → FAVORABLE para grid bot
+  - ADX 20-25: zona de transición → NEUTRAL
+  - ADX > 25: mercado en tendencia → DESFAVORABLE para grid bot
+- El ADX es el indicador más importante para confirmar rango
+
+**2.3 — Indicador: RSI (Relative Strength Index)**
+- Período: 14 días
+- Cálculo estándar con suavizado Wilder (RMA)
+- Interpretación para grid bot:
+  - RSI entre 40 y 60: mercado neutral/en rango → MUY FAVORABLE
+  - RSI entre 30 y 40 o entre 60 y 70: zona de atención → MODERADO
+  - RSI < 30 (sobreventa) o RSI > 70 (sobrecompra): mercado extremo → evaluar con precaución
+  - Para grid bot NO es necesariamente malo un RSI extremo, pero suma al scoring si está en rango medio
+
+**2.4 — Indicador: Bandas de Bollinger**
+- Período: 20 días, desviación estándar: 2
+- Calcular: Banda Superior, Media Móvil (SMA20), Banda Inferior
+- Métricas derivadas:
+  - %B = (Precio - Banda Inferior) / (Banda Superior - Banda Inferior)
+  - Ancho de banda = (Banda Superior - Banda Inferior) / SMA20 * 100
+- Interpretación para grid bot:
+  - Ancho de banda en percentil 20%-60% histórico: mercado en compresión/rango → FAVORABLE
+  - %B entre 0.2 y 0.8: precio dentro de bandas → FAVORABLE
+  - Ancho en expansión fuerte (percentil > 80%): DESFAVORABLE
+
+**2.5 — Indicador: Soportes y Resistencias**
+- Calcular mediante identificación de máximos y mínimos locales en los últimos 90 y 180 días
+- Algoritmo: un máximo local es un punto donde High[i] > High[i-2], High[i-1], High[i+1], High[i+2]
+- Identificar los 3 niveles de soporte y 3 de resistencia más relevantes (por número de toques y recencia)
+- Soporte actual: nivel de soporte más cercano por debajo del precio actual
+- Resistencia actual: nivel de resistencia más cercano por encima del precio actual
+- Rango natural: diferencia entre resistencia actual y soporte actual
+- Este rango natural será la base sugerida para el rango del grid bot
+
+**2.6 — Indicador: Volatilidad Histórica (HV)**
+- Calcular la volatilidad histórica anualizada usando retornos logarítmicos diarios de los últimos 30 días
+- HV30 = Desviación estándar(ln(Close[i]/Close[i-1])) * sqrt(365) * 100
+- Clasificación:
+  - HV30 < 50%: baja volatilidad
+  - HV30 50%-100%: volatilidad media → ideal para grid
+  - HV30 > 100%: alta volatilidad
+
+**2.7 — Indicador: Volumen relativo (RVOL)**
+- Volumen promedio últimos 20 días vs volumen promedio últimos 5 días
+- RVOL = VolPromedio5d / VolPromedio20d
+- RVOL > 1.5: volumen inusualmente alto → posible breakout → precaución
+- RVOL entre 0.5 y 1.5: volumen normal → FAVORABLE
+
+**2.8 — Indicador: Choppiness Index (CHOP)**
+Purpose: Measures the "choppiness" or strength of trends, rather than predicting the future direction of the market.
+Above 61.8 (High): Markets are in a consolidation or sideways phase.
+Below 38.2 (Low): Markets are in a strong, clear trend.
+
+**2.9 — Indicador: Efficiency Ratio (ER)**
+mide la fuerza de una tendencia comparando el movimiento neto del precio con el total de movimientos (ruido) en un periodo. Oscila entre 0 y 1, donde valores cercanos a 1 indican una tendencia fuerte y eficiente, y cercanos a 0 indican un mercado lateral o con ruido
+
+---
+
+### MÓDULO 3: SISTEMA DE SCORING Y RANKING
+
+**3.1 — Arquitectura del scoring**
+
+El sistema de scoring debe ser **completamente paramétrico**: el usuario selecciona qué indicadores usar para el análisis. Si no selecciona ningún indicador, el sistema debe mostrar un error y no permitir ejecutar el análisis.
+
+Interfaz de selección de indicadores (checkboxes individuales):
+☐ ATR — Volatilidad relativa
+☐ ADX — Detección de rango/tendencia  
+☐ RSI — Momento del mercado
+☐ Bandas de Bollinger — Compresión y posición del precio
+☐ Soportes/Resistencias — Estructura del mercado
+☐ Volatilidad Histórica (HV30)
+☐ Volumen Relativo (RVOL)
+☐ Choppiness Index (CHOP)
+☐ Efficiency Ratio (ER)
+
+**3.2 — Cálculo del score**
+
+Cada indicador seleccionado aporta una puntuación parcial que se normaliza al total de indicadores activos:
+
+Score total = Σ(puntuación_indicador_i * peso_i) / Σ(peso_i)   → resultado en rango 0 a 100
+
+Puntuaciones por indicador (0 a 100) (peso o podenderacion) Utilizar segun tu criterio
+
+Cuando un indicador no está seleccionado, su peso se redistribuye proporcionalmente entre los seleccionados.
+
+**3.3 — Clasificación del ranking**
+
+Score ≥ 80: ⭐ Excelente — Altamente recomendado para grid bot
+Score 65-79: ✅ Bueno — Apto para grid bot
+Score 50-64: ⚠️ Regular — Viable con precaución
+Score < 50: ❌ No apto — No recomendado
+
+Solo los activos con score ≥ 50 se incluyen en el ranking final. Los demás se listan en una sección colapsable de "Activos descartados" con la razón principal.
+
+**3.4 — Justificación del ranking**
+
+Por cada activo rankeado, el sistema debe generar automáticamente un párrafo de justificación en español, del estilo:
+
+"BTC ocupa el puesto #3 con un score de 74/100. A favor: el ADX de 18.3 confirma un mercado en rango sin tendencia definida. El RSI de 52 indica neutralidad del momentum. El ATR relativo del 6.2% ofrece suficiente volatilidad para generar rendimiento en la grilla. En contra: el ancho de las Bandas de Bollinger se encuentra en el percentil 65%, sugiriendo una leve expansión que puede reducir la eficiencia del rango."
+
+---
+
+### MÓDULO 4: SUGERENCIA DE CONFIGURACIÓN DEL GRID
+
+Para cada activo que sea viable (score ≥ 50), el sistema debe calcular y sugerir la configuración óptima del grid bot.
+
+**4.1 — Cálculo del rango sugerido**
+
+Método primario: usar los soportes y resistencias actuales identificados.
+- Rango inferior (Lower): soporte actual con un buffer del 2% hacia abajo
+- Rango superior (Upper): resistencia actual con un buffer del 2% hacia arriba
+
+Método alternativo (si no hay S/R claros): usar Bandas de Bollinger
+- Lower: Banda Inferior de Bollinger
+- Upper: Banda Superior de Bollinger
+
+**4.2 — Cálculo de cantidad de grids**
+
+La cantidad de grids se calcula para optimizar la rentabilidad por grid considerando las comisiones de BingX (Spot: 0.1% maker / 0.1% taker = 0.2% round-trip por operación).
+
+Fórmula base:
+- Amplitud del rango = (Upper - Lower) / Lower * 100  [en porcentaje]
+- Rentabilidad mínima por grid para cubrir comisiones: > 0.2% (con margen de seguridad: > 0.4%)
+- Grids máximos = floor(Amplitud del rango / 0.4%)  [mínimo garantiza rentabilidad]
+- Grids recomendados = floor(Amplitud del rango / 0.6%)  [con margen de seguridad 50%)
+- Grids mínimos: 5 (grid bot no es útil con menos)
+- Grids máximos sugeridos: 150
+
+Mostrar al usuario:
+- Rango sugerido: $X.XX — $X.XX (amplitud: X.X%)
+- Grids recomendados: N grids
+- Rentabilidad estimada por grid: X.XX%
+- Rentabilidad bruta por grid: amplitud / N grids
+- Rentabilidad neta por grid: rentabilidad bruta - 0.2% (comisiones)
+- Aviso si rentabilidad neta < 0.1%: "ADVERTENCIA: el grid no cubre las comisiones con esta configuración"
+
+**4.3 — Tabla de configuraciones alternativas**
+
+Mostrar una tabla con 3 configuraciones posibles:
+| Configuración | Grids | Rentabilidad/Grid | Observación |
+|---|---|---|---|
+| Conservadora | N/2 | Mayor rentabilidad/grid | Menos operaciones |
+| Recomendada | N | Balance óptimo | Configuración sugerida |
+| Agresiva | N*1.5 | Menor rentabilidad/grid | Más operaciones |
+
+---
+
+### MÓDULO 5: SIMULACIÓN DE RENTABILIDAD HISTÓRICA
+
+Parado en la vista de un activo individual, el usuario debe poder simular la rentabilidad que habría obtenido si hubiera activado el grid bot hace 7, 15 o 30 días.
+
+**5.1 — Lógica de simulación**
+
+Para cada período (7d, 15d, 30d):
+
+1. Obtener el precio de entrada: precio de cierre del activo hace N días (desde los datos OHLCV de BingX).
+2. Calcular el rango del grid en esa fecha: usar las Bandas de Bollinger o los S/R calculados con datos disponibles hasta ese momento (simulación de condiciones pasadas).
+3. Simular la operatoria del grid:
+   - Precio inicial = Close[hace N días]
+   - Si el precio inicial está dentro del rango configurado: calcular cuántas veces el precio cruzó cada nivel de grid usando los datos OHLCV de los N días.
+   - Método simplificado: contar cuántas veces el precio cruzó el nivel de la grilla media y multiplicar por la rentabilidad por grid.
+   - Número de operaciones estimadas = (número de cruces del precio entre niveles de grid) * (número de grids activos en la trayectoria del precio)
+
+4. Calcular:
+   - Capital inicial: $1,000 USD (fijo para comparabilidad)
+   - Comisiones pagadas: número de operaciones * 0.2% del valor operado
+   - Ganancia bruta del grid: suma de ganancias por cada operación completada
+   - Ganancia neta: ganancia bruta - comisiones
+   - ROI del período: ganancia neta / capital inicial * 100
+   - Variación del precio del activo en el período (para comparar con estrategia buy & hold)
+
+**5.2 — Presentación de resultados**
+
+Para cada período mostrar una tarjeta con:
+- Fecha de inicio simulada
+- Precio de entrada vs precio actual
+- Capital final estimado sobre $1,000 invertidos
+- ROI neto del grid (%)
+- Número estimado de operaciones completadas
+- Comisiones totales pagadas
+- Comparativa: "El grid generó X% vs X% que hubiera dado buy & hold"
+- Gráfico de línea mostrando el precio del activo en el período con el rango del grid marcado (bandas superior/inferior en color)
+
+**5.3 — Advertencia de simulación**
+
+Incluir siempre el disclaimer: "Esta simulación es una estimación basada en datos históricos de precios. La rentabilidad real depende de la distribución exacta de las operaciones y puede diferir significativamente. No constituye asesoramiento financiero."
+
+---
+
+### MÓDULO 6: INTERFAZ DE USUARIO — DISEÑO PREMIUM
+
+**6.1 — Estética general**
+
+La interfaz debe ser oscura (dark mode por defecto), con un diseño premium inspirado en plataformas financieras profesionales. Paleta de colores:
+- Fondo principal: #0D0F14
+- Fondo de cards: #141820
+- Fondo de panels: #1A1F2E
+- Acento primario: #00D4AA (verde/teal — para scores positivos, confirmaciones)
+- Acento secundario: #6B7FFF (azul/púrpura — para highlights y selecciones)
+- Advertencia: #F5A623 (naranja — para alertas moderadas)
+- Peligro: #E74C3C (rojo — para valores fuera de rango)
+- Texto primario: #F0F4FF
+- Texto secundario: #8892A4
+- Bordes: #252D3D
+
+Tipografía: Inter o JetBrains Mono para valores numéricos.
+
+**6.2 — Layout principal**
+
+La aplicación tiene una sola página principal (SPA) con las siguientes secciones:
+
+SECCIÓN 1 — HEADER:
+- Logo "GridBot" con subtítulo "BingX Grid Spot Analyzer"
+- Estado de la conexión a APIs (indicador visual: verde/rojo)
+- Timestamp del último análisis
+- Botón "Ejecutar nuevo análisis" (CTA principal)
+
+SECCIÓN 2 — PANEL DE CONFIGURACIÓN (sidebar izquierdo o panel superior colapsable):
+- Checkboxes de indicadores a usar (descritos en Módulo 3)
+- Botón "Analizar" — habilitado solo si al menos 1 indicador está seleccionado
+- Mensaje de error si se intenta analizar sin indicadores: "Seleccioná al menos un indicador para ejecutar el análisis"
+- Indicador de progreso durante el análisis (barra de progreso con nombre del activo siendo procesado)
+
+SECCIÓN 3 — TABLA DE RANKING:
+- Tabla con columnas: Rank | Logo | Símbolo | Nombre | Score | ADX | ATR% | RSI | BB% | S/R Range | Estado | Acción
+- Código de colores para el score: verde (≥80), teal (65-79), amarillo (50-64), rojo (<50)
+- Cada fila es clickeable → abre la vista detalle del activo
+- Filtros: por score mínimo, por indicadores individuales, búsqueda por símbolo
+- Ordenamiento por cualquier columna
+- Paginación o scroll infinito
+
+SECCIÓN 4 — VISTA DETALLE DEL ACTIVO (modal o página separada):
+- Header con logo, nombre, precio actual, variación 24h, market cap
+- Panel de indicadores: todos los valores calculados con semáforo visual
+- Panel de configuración del grid sugerido (Módulo 4)
+- Panel de justificación (texto generado, Módulo 3.4)
+- Panel de simulación histórica con selector de período (7d / 15d / 30d) y gráfico
+- Gráfico de precio con soporte/resistencia y Bollinger Bands superpuestos
+
+**6.3 — Indicadores de progreso y loading**
+- Skeleton loaders durante la carga
+- Spinner por activo durante el análisis paralelo
+- Toast notifications para errores de API o timeouts
+
+**6.4 — Responsividad**
+- Desktop (>1200px): layout de 3 columnas
+- Tablet (768-1200px): layout de 2 columnas
+- Mobile (<768px): layout de 1 columna (funcional pero no es la experiencia principal)
+
+---
+
+### MÓDULO 7: ARQUITECTURA BACKEND EN GO
+
+**7.1 — Estructura del proyecto**
+
+```
+gridbot/
+├── main.go                    # Entry point, servidor HTTP
+├── config/
+│   └── config.go              # Configuración desde env/yaml
+├── api/
+│   ├── handlers.go            # HTTP handlers
+│   └── routes.go              # Definición de rutas
+├── services/
+│   ├── coingecko.go           # Cliente API CoinGecko
+│   ├── bingx.go               # Cliente API BingX
+│   ├── analyzer.go            # Orquestador del análisis
+│   └── simulator.go           # Simulación histórica
+├── indicators/
+│   ├── atr.go                 # Cálculo ATR
+│   ├── adx.go                 # Cálculo ADX
+│   ├── rsi.go                 # Cálculo RSI
+│   ├── bollinger.go           # Bandas de Bollinger
+│   ├── support_resistance.go  # Detección S/R
+│   ├── volatility.go          # Volatilidad histórica
+│   └── volume.go              # RVOL
+├── models/
+│   ├── asset.go               # Struct activo y análisis
+│   ├── grid.go                # Struct configuración grid
+│   └── ranking.go             # Struct ranking y scoring
+├── cache/
+│   └── cache.go               # Cache en memoria
+├── web/
+│   ├── static/
+│   │   ├── css/
+│   │   ├── js/
+│   │   └── img/
+│   └── templates/
+│       └── index.html
+└── go.mod
+```
+
+**7.2 — Endpoints REST**
+
+GET  /api/assets/universe        → Devuelve las 100 monedas (desde cache o CoinGecko)
+POST /api/analysis/run           → Inicia análisis con indicadores seleccionados (body: {"indicators": ["adx","atr","rsi"]})
+GET  /api/analysis/status        → Estado del análisis en curso (Server-Sent Events o polling)
+GET  /api/analysis/results       → Resultados del último análisis completado
+GET  /api/asset/:symbol          → Detalle completo de un activo (indicadores + grid + justificación)
+GET  /api/asset/:symbol/simulate → Simulación histórica (query param: ?period=7|15|30)
+GET  /api/asset/:symbol/ohlcv    → Datos OHLCV para gráficos del frontend
+GET  /                           → Sirve el frontend (index.html)
+
+**7.3 — Manejo de concurrencia**
+
+```go
+// Ejemplo de análisis paralelo con semáforo
+sem := make(chan struct{}, 10) // máximo 10 goroutines concurrentes
+for _, asset := range assets {
+    wg.Add(1)
+    go func(a Asset) {
+        defer wg.Done()
+        sem <- struct{}{}
+        defer func() { <-sem }()
+        result := analyzeAsset(a, selectedIndicators)
+        resultsChan <- result
+    }(asset)
+}
+```
+
+**7.4 — Configuración requerida (.env)**
+
+```
+COINGECKO_API_KEY=    # opcional, para tier pro
+COINMARKETCAP_API_KEY= # alternativa a CoinGecko
+PORT=8080
+CACHE_TTL_ASSETS=1800   # 30 minutos en segundos
+CACHE_TTL_OHLCV=300     # 5 minutos en segundos
+BINGX_API_BASE=https://open-api.bingx.com
+COINGECKO_API_BASE=https://api.coingecko.com/api/v3
+MAX_CONCURRENT_REQUESTS=10
+```
+
+---
+
+### REQUERIMIENTOS NO FUNCIONALES
+
+**Performance:**
+- El análisis completo de todos los activos disponibles debe completarse en menos de 5 minutos
+- El frontend debe responder en menos de 2 segundos para cualquier interacción post-análisis
+- Implementar timeout de 10 segundos por request a APIs externas
+
+**Robustez y manejo de errores:**
+- Si un activo no tiene datos suficientes en BingX (menos de 50 velas), excluirlo del análisis y notificarlo
+- Si CoinGecko falla, intentar con CoinMarketCap como fallback (y viceversa)
+- Si BingX devuelve error para un activo, marcarlo como "Sin datos" y continuar con los demás
+- Loggear todos los errores con timestamp, activo afectado y código de error
+
+**Mantenibilidad:**
+- Cada indicador en su propio archivo Go con tests unitarios mínimos
+- Código comentado en español o inglés (consistente)
+- README completo con instrucciones de instalación, configuración y ejecución
+
+**Seguridad:**
+- No exponer API keys en el frontend
+- Rate limiting básico en los endpoints propios (máximo 10 requests/minuto por IP)
+
+---
+
+### ENTREGABLES ESPERADOS
+
+1. Código fuente completo en Go con estructura de proyecto definida
+2. Frontend completo (HTML/CSS/JS) servido por el backend Go
+3. Archivo go.mod con todas las dependencias
+4. Archivo .env.example con todas las variables necesarias
+5. README.md con:
+   - Descripción del proyecto
+   - Requisitos previos (Go version, API keys necesarias)
+   - Instrucciones de instalación paso a paso
+   - Instrucciones de uso
+   - Descripción de los indicadores y cómo interpretar el scoring
+6. Script de compilación (Makefile o build.sh)
+
+---
+
+### FLUJO COMPLETO DE USO (USER JOURNEY)
+
+1. Usuario abre http://localhost:8080 en el navegador
+2. Ve el dashboard con el panel de configuración de indicadores
+3. Selecciona los indicadores deseados (ej: ADX + ATR + RSI)
+4. Hace clic en "Analizar"
+5. Ve la barra de progreso mientras se analizan los activos en paralelo
+6. Al completarse, ve la tabla de ranking ordenada por score
+7. Puede filtrar/ordenar la tabla por cualquier columna
+8. Hace clic en un activo (ej: ETH) para ver su detalle
+9. Ve todos los indicadores calculados, el semáforo de cada uno y la justificación textual
+10. Ve la configuración sugerida del grid (rango, cantidad de grids, rentabilidad estimada)
+11. Selecciona el período de simulación (7d / 15d / 30d)
+12. Ve el gráfico histórico con el rango del grid y la rentabilidad simulada
+13. Puede volver al ranking y explorar otro activo
+
+---
+
+### NOTAS FINALES PARA EL DESARROLLADOR IA
+
+- Priorizá la corrección matemática de los indicadores sobre la velocidad de desarrollo
+- El scoring paramétrico es la característica diferencial más importante: debe funcionar correctamente con cualquier combinación de indicadores
+- La UI debe ser visualmente impresionante y profesional — es una aplicación para traders
+- Implementá primero el backend completo con endpoints funcionales, luego el frontend
+- Usá datos reales de las APIs desde el primer momento, no mocks (excepto para tests unitarios)
+- Si algún cálculo tiene variantes (ej: EMA vs SMA para ATR), documentá cuál implementás y por qué

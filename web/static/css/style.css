@@ -1,0 +1,445 @@
+:root {
+    --bg-main: #0D0F14;
+    --bg-card: #141820;
+    --bg-panel: #1A1F2E;
+    --primary: #00D4AA;
+    --secondary: #6B7FFF;
+    --warning: #F5A623;
+    --danger: #E74C3C;
+    --text-main: #F0F4FF;
+    --text-sec: #8892A4;
+    --border: #252D3D;
+    --hover: #2A3448;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+}
+
+/* Header */
+.main-header {
+    background-color: var(--bg-panel);
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.logo h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.logo span {
+    color: var(--primary);
+}
+
+.subtitle {
+    font-size: 0.8rem;
+    color: var(--text-sec);
+    margin-left: 0.5rem;
+}
+
+.status-bar {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+.status-item {
+    font-size: 0.85rem;
+    color: var(--text-sec);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-dot.green { background-color: var(--primary); }
+.status-dot.red { background-color: var(--danger); }
+
+/* Layout */
+.dashboard {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 1rem;
+    padding: 1rem;
+    height: calc(100vh - 70px);
+}
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.panel {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+}
+
+.panel-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.panel-desc {
+    font-size: 0.85rem;
+    color: var(--text-sec);
+    margin-bottom: 1.5rem;
+}
+
+/* Indicators Grid */
+.indicators-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 0.9rem;
+    position: relative;
+    padding-left: 30px;
+}
+
+.checkbox-container input {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
+
+.checkmark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 20px;
+    width: 20px;
+    background-color: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.checkbox-container:hover input ~ .checkmark {
+    background-color: var(--hover);
+}
+
+.checkbox-container input:checked ~ .checkmark {
+    background-color: var(--primary);
+    border-color: var(--primary);
+}
+
+.checkmark:after {
+    content: "";
+    position: absolute;
+    display: none;
+    left: 7px;
+    top: 3px;
+    width: 4px;
+    height: 8px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.checkbox-container input:checked ~ .checkmark:after {
+    display: block;
+}
+
+/* Buttons */
+.btn {
+    padding: 0.8rem 1.2rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.9rem;
+}
+
+.btn-primary {
+    background-color: var(--primary);
+    color: #000;
+    width: 100%;
+    margin-top: 1rem;
+}
+
+.btn-primary:hover {
+    filter: brightness(1.1);
+    transform: translateY(-2px);
+}
+
+.btn-secondary {
+    background-color: var(--bg-panel);
+    color: var(--text-main);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background-color: var(--hover);
+}
+
+/* Content Area */
+.content-area {
+    overflow-y: auto;
+}
+
+.ranking-panel {
+    min-height: 100%;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.filters input {
+    background-color: var(--bg-main);
+    border: 1px solid var(--border);
+    color: var(--text-main);
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    width: 250px;
+}
+
+/* Tables */
+.table-container {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+}
+
+th {
+    text-align: left;
+    color: var(--text-sec);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+td {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+}
+
+tr:hover td {
+    background-color: rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+}
+
+.score-badge {
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.score-excellent { background-color: rgba(0, 212, 170, 0.2); color: var(--primary); }
+.score-good { background-color: rgba(107, 127, 255, 0.2); color: var(--secondary); }
+.score-regular { background-color: rgba(245, 166, 35, 0.2); color: var(--warning); }
+.score-bad { background-color: rgba(231, 76, 60, 0.2); color: var(--danger); }
+
+/* Discarded */
+.discarded-section {
+    margin-top: 2rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+}
+
+.discarded-section summary {
+    color: var(--text-sec);
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.discarded-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+    padding-top: 1rem;
+}
+
+.discarded-card {
+    background-color: var(--bg-main);
+    padding: 0.8rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 0.8rem;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(5px);
+}
+
+.modal.hidden { display: none; }
+
+.modal-content {
+    background-color: var(--bg-card);
+    width: 90%;
+    max-width: 1200px;
+    height: 90vh;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.close-modal {
+    background: none;
+    border: none;
+    color: var(--text-sec);
+    font-size: 2rem;
+    cursor: pointer;
+}
+
+.modal-body {
+    padding: 2rem;
+    overflow-y: auto;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.simulation-panel {
+    grid-column: span 2;
+}
+
+/* Components */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.stat-box {
+    background-color: var(--bg-main);
+    padding: 1rem;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.stat-label { font-size: 0.75rem; color: var(--text-sec); }
+.stat-value { font-size: 1.1rem; font-weight: 700; color: var(--primary); display: block; }
+
+.justification-box {
+    background-color: rgba(107, 127, 255, 0.05);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 4px solid var(--secondary);
+    margin-top: 1rem;
+}
+
+.grid-config-box {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    background-color: var(--bg-main);
+    padding: 1.5rem;
+    border-radius: 12px;
+}
+
+.range-info {
+    display: flex;
+    justify-content: space-between;
+}
+
+.val { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+.val-big { font-size: 2rem; font-weight: 800; color: var(--primary); display: block; }
+
+.alt-configs {
+    margin-top: 1rem;
+    font-size: 0.8rem;
+}
+
+.hidden { display: none !important; }
+
+/* Charts */
+.chart-container {
+    height: 300px;
+    margin-top: 1rem;
+}
+
+/* Progress */
+.progress-bar {
+    width: 100%;
+    height: 6px;
+    background-color: var(--bg-main);
+    border-radius: 3px;
+    margin: 1rem 0 0.5rem;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: var(--primary);
+    width: 0%;
+    transition: width 0.3s;
+}
+
+#progress-text {
+    font-size: 0.75rem;
+    color: var(--text-sec);
+}
+
+.sim-stats {
+    display: flex;
+    gap: 2rem;
+    margin-top: 1rem;
+}
