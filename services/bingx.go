@@ -89,12 +89,12 @@ func (c *BingXClient) GetOHLCV(symbol string, interval string, limit int) ([]mod
 			continue
 		}
 		
-		ts, _ := k[0].(float64)
-		open, _ := strconv.ParseFloat(k[1].(string), 64)
-		high, _ := strconv.ParseFloat(k[2].(string), 64)
-		low, _ := strconv.ParseFloat(k[3].(string), 64)
-		close, _ := strconv.ParseFloat(k[4].(string), 64)
-		vol, _ := strconv.ParseFloat(k[5].(string), 64)
+		ts := parseFloat(k[0])
+		open := parseFloat(k[1])
+		high := parseFloat(k[2])
+		low := parseFloat(k[3])
+		close := parseFloat(k[4])
+		vol := parseFloat(k[5])
 
 		ohlcv = append(ohlcv, models.OHLCV{
 			Timestamp: int64(ts),
@@ -107,4 +107,16 @@ func (c *BingXClient) GetOHLCV(symbol string, interval string, limit int) ([]mod
 	}
 
 	return ohlcv, nil
+}
+
+func parseFloat(v interface{}) float64 {
+	switch val := v.(type) {
+	case float64:
+		return val
+	case string:
+		f, _ := strconv.ParseFloat(val, 64)
+		return f
+	default:
+		return 0
+	}
 }
