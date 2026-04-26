@@ -106,6 +106,11 @@ func (c *BingXClient) GetOHLCV(symbol string, interval string, limit int) ([]mod
 		})
 	}
 
+	// Reverse the array to ensure chronological order (oldest first)
+	for i, j := 0, len(ohlcv)-1; i < j; i, j = i+1, j-1 {
+		ohlcv[i], ohlcv[j] = ohlcv[j], ohlcv[i]
+	}
+
 	return ohlcv, nil
 }
 

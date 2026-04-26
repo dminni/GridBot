@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GridBot - Premium Analytics</title>
+    <link rel="stylesheet" href="/static/css/index.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo-text">GridBot</h1>
+            </div>
+            <nav class="nav-menu">
+                <a href="/" class="nav-link active">Dashboard</a>
+                <a href="#" class="nav-link disabled">Configuración</a>
+            </nav>
+            <div class="sidebar-footer">
+                v1.0.0
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="topbar">
+                <h2 class="page-title">Market Overview</h2>
+                <div class="topbar-actions">
+                    <span id="last-update" class="status-text">Actualizando...</span>
+                    <button class="btn btn-primary" onclick="loadAssets()">Refresh</button>
+                </div>
+            </header>
+
+            <div class="content-area">
+                <!-- Stats Row -->
+                <div class="stats-grid">
+                    <div class="stat-card glass-panel">
+                        <div class="stat-label">Activos Analizados</div>
+                        <div class="stat-value" id="stat-analyzed">--</div>
+                    </div>
+                    <div class="stat-card glass-panel">
+                        <div class="stat-label">Disponibles en BingX</div>
+                        <div class="stat-value highlight-green" id="stat-bingx">--</div>
+                    </div>
+                </div>
+
+                <!-- Data Table -->
+                <div class="table-container glass-panel">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Activo</th>
+                                <th>Precio (USDT)</th>
+                                <th>Volumen 24h</th>
+                                <th>Market Cap</th>
+                                <th>BingX</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="assets-table-body">
+                            <tr>
+                                <td colspan="7" class="empty-state">Cargando datos del mercado...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

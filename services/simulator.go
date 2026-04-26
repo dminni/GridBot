@@ -45,35 +45,50 @@ func (s *Simulator) Simulate(symbol string, periodDays int, config models.GridCo
 		gridSize = currentPrice * 0.005
 	}
 
-	// Simulate trades: detect when price crosses grid levels
+	// Simulate trades: stateful tracking of inventory per grid level
+	// state[g] == true means we hold the base asset (ready to sell if price rises)
+	// state[g] == false means we hold USDT (ready to buy if price drops)
+	state := make([]bool, grids+1)
+	levels := make([]float64, grids+1)
+
+	for g := 0; g <= grids; g++ {
+		levels[g] = lower + float64(g)*gridSize
+		// If the level is above our entry price, we assume we bought market on day 0
+		// and placed a sell limit order there.
+		if levels[g] >= entryPrice {
+			state[g] = true
+		} else {
+			// If below, we just placed a buy limit order.
+			state[g] = false
+		}
+	}
+
 	var trades []models.Trade
 	for i := 1; i < len(ohlcv); i++ {
-		prevClose := ohlcv[i-1].Close
 		currLow := ohlcv[i].Low
 		currHigh := ohlcv[i].High
 
-		// Check each grid level for crossings within this candle
 		for g := 0; g <= grids; g++ {
-			level := lower + float64(g)*gridSize
+			level := levels[g]
 
-			// Price dropped through a level (BUY signal)
-			if prevClose > level && currLow <= level {
+			// If we are ready to buy, and price drops to/below level
+			if !state[g] && currLow <= level {
 				trades = append(trades, models.Trade{
 					Timestamp: ohlcv[i].Timestamp,
 					Price:     level,
 					Type:      "buy",
 					GridLevel: g,
 				})
-			}
-
-			// Price rose through a level (SELL signal)
-			if prevClose < level && currHigh >= level {
+				state[g] = true // we now hold it, ready to sell
+			} else if state[g] && currHigh >= level {
+				// If we hold it, and price rises to/above level
 				trades = append(trades, models.Trade{
 					Timestamp: ohlcv[i].Timestamp,
 					Price:     level,
 					Type:      "sell",
 					GridLevel: g,
 				})
+				state[g] = false // we sold it, ready to buy again
 			}
 		}
 	}

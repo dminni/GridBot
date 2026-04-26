@@ -228,6 +228,27 @@ document.addEventListener('DOMContentLoaded', () => {
             order: 2
         });
 
+        // Add shaded area for High and Low prices (wicks/volatility)
+        datasets.push({
+            label: 'High',
+            data: history.map(h => h.high),
+            borderColor: 'transparent',
+            borderWidth: 0,
+            pointRadius: 0,
+            fill: false,
+            order: 4
+        });
+        datasets.push({
+            label: 'Low',
+            data: history.map(h => h.low),
+            borderColor: 'transparent',
+            borderWidth: 0,
+            pointRadius: 0,
+            fill: '-1', // fill between Low and High
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            order: 4
+        });
+
         // Grid lines (subtle)
         const maxGridLines = Math.min(grids - 1, 30); // cap to avoid too many lines
         const gridStep = Math.max(1, Math.floor((grids - 1) / maxGridLines));
